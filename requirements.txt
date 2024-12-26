@@ -1,7 +1,8 @@
+pysqlite3-binary
 streamlit
 langchain-google-genai
 langchain-community
-chromadb
+chromadb==0.5.3
 python-dotenv
 docx2txt
 pypdf
