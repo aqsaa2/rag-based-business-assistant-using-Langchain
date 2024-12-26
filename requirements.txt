@@ -7,5 +7,4 @@ docx2txt
 pypdf
 uuid
 pandas
-io
 logging
