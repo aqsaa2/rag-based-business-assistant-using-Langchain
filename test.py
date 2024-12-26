@@ -7,10 +7,7 @@ import logging
 import streamlit as st
 import csv
 import io
-import io
-import csv
-import logging
-import streamlit as st
+import pandas as pd
 from io import StringIO
 
 from langchain_community.document_loaders.text import TextLoader
@@ -28,11 +25,6 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-import pysqlite3
-import sys
-sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
-#then import 
-import chromadb
 from chromadb import PersistentClient
 
 logging.basicConfig(level=logging.INFO)
@@ -107,23 +99,54 @@ DB_DOCS_LIMIT = 40
 
 #     download_csv_button(personas, user_stories, gherkin_scenarios)
 
+import io
+import csv
+
+
+# def get_stored_data():
+#     if st.session_state.vector_db:
+#         # Fetch all documents and metadata from the collection
+#         results = st.session_state.vector_db.get()
+            
+#         return documents['documents']  # Return stored data as a list of documents
+
+
 def get_stored_data():
-    """Fetch stored data from Chroma vector database."""
+    """
+    Retrieves all documents and metadata stored in the vector_db and returns them.
+
+    Returns:
+        list: A list of dictionaries containing documents and their metadata.
+              Each dictionary has the keys 'document' and 'metadata'.
+              Returns an empty list if vector_db is not initialized or has no data.
+    """
     try:
-        documents = st.session_state.vector_db.get()  
-        if not documents or "documents" not in documents:
-            logger.warning("No documents found in the vector database.")
+        if "vector_db" in st.session_state and st.session_state.vector_db:
+            # Fetch stored data from vector_db
+            results = st.session_state.vector_db.get()
+            
+            if results:
+                # Combine documents with their corresponding metadata
+                stored_data = [
+                    {"document": doc, "metadata": metadata}
+                    for doc, metadata in zip(results.get("documents", []), results.get("metadatas", []))
+                ]
+                return stored_data
+            else:
+                logger.info("No data found in the vector_db.")
+                return []
+        else:
+            logger.error("vector_db is not initialized in the session state.")
             return []
-        return documents["documents"]
     except Exception as e:
-        logger.error(f"Failed to fetch stored data: {e}")
+        logger.error(f"Error retrieving data from vector_db: {e}")
         return []
 
-def generate_csv_from_chroma(llm, stored_data):
-    """Generate CSV content for personas, user stories, and business scenarios."""
-    personas = llm(generate_persona_prompt(stored_data))
-    user_stories = llm(generate_user_story_prompt(stored_data))
-    gherkin_scenarios = llm(generate_gherkin_scenario_prompt(stored_data))
+
+def generate_csv_from_chroma(llm, documents):
+    personas = llm(generate_persona_prompt(documents))
+    user_stories = llm(generate_user_story_prompt(documents))
+    gherkin_scenarios = llm(generate_gherkin_scenario_prompt(documents))
 
     # Create a CSV in memory
     output = io.StringIO()
@@ -134,16 +157,16 @@ def generate_csv_from_chroma(llm, stored_data):
     for persona in personas:
         writer.writerow({
             "Type": "Persona",
-            "Name/Story/Scenario": persona.get("Name", "Unknown Persona"),
-            "Description": persona.get("Description", ""),
+            "Name/Story/Scenario": persona.get("Persona", "Unknown Persona"),
+            "Description": persona.get("Description", "")
         })
 
     # Add user stories
-    for story in user_stories:
+    for user_story in user_stories:
         writer.writerow({
             "Type": "User Story",
-            "Name/Story/Scenario": story.get("Story", "Unknown Story"),
-            "Description": story.get("Reason", ""),
+            "Name/Story/Scenario": user_story.get("User Story", "Unknown User Story"),
+            "Description": ""
         })
 
     # Add Gherkin scenarios
@@ -151,26 +174,26 @@ def generate_csv_from_chroma(llm, stored_data):
         writer.writerow({
             "Type": "Business Scenario",
             "Name/Story/Scenario": scenario.get("Scenario", "Unknown Scenario"),
-            "Description": scenario.get("Description", ""),
+            "Description": scenario.get("Description", "")
         })
 
-    # Prepare CSV data for download
     output.seek(0)
     return output.getvalue()
 
-def display_download_button(llm, stored_data):
-    """Generate CSV file and provide download button."""
-    if not stored_data:
-        st.warning("No data available to generate the CSV.")
-        return
 
-    csv_data = generate_csv_from_chroma(llm, stored_data)
-    st.download_button(
-        label="Download CSV",
-        data=csv_data,
-        file_name="personas_user_stories.csv",
-        mime="text/csv",
-    )
+
+def display_download_button(llm, stored_data):
+    if stored_data:
+        csv_data = generate_csv_from_chroma(llm, stored_data)
+        st.download_button(
+            label="Download CSV",
+            data=csv_data,
+            file_name="personas_user_stories_business_scenarios.csv",
+            mime="text/csv"
+        )
+    else:
+        st.warning("No stored data available for generating the CSV.")
+
 
 
 def generate_persona_prompt(stored_data):
@@ -209,7 +232,6 @@ def generate_gherkin_scenario_prompt(stored_data):
         Then [expected outcome]
     ```
     """
-
 # def generate_outputs(llm, stored_data):
 #     personas = llm(generate_persona_prompt(stored_data))
 #     user_stories = llm(generate_user_story_prompt(stored_data))
@@ -314,14 +336,15 @@ def stream_llm_response(llm_stream, messages):
 def store_user_responses_to_db(user_input, session_id):
     try:
         doc_id = str(uuid.uuid4())
-        st.session_state.vector_db.add(
-            documents=[user_input],
+        st.session_state.vector_db.add_texts(
+            texts=[user_input],
             metadatas=[{"session_id": session_id}],
             ids=[doc_id]
         )
         logger.info(f"Response saved to Chroma DB with ID: {doc_id}")
     except Exception as e:
         logger.error(f"Failed to store response: {e}")
+
 
 def load_doc_to_db():
     # Use loader according to doc type
@@ -369,7 +392,7 @@ def load_url_to_db():
         url = st.session_state.rag_url
         docs = []
         if url not in st.session_state.get("rag_sources", []):
-            if len(st.session_state.get("rag_sources", [])) < 10:
+            if len(st.session_state.get("rag_sources", [])) < DB_DOCS_LIMIT:
                 try:
                     loader = WebBaseLoader(url)  # Scraping the URL content
                     docs.extend(loader.load())  # Load the scraped content as documents.
@@ -403,6 +426,7 @@ def initialize_vector_db(docs):
         collection_names.pop(0)
 
     return vector_db
+
 
 
 
