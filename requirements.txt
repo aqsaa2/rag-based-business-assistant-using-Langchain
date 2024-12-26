@@ -1,7 +1,7 @@
 streamlit
 langchain-google-genai
 langchain-community
-chromadb=0.3.29
+chromadb=3.35.0.
 python-dotenv
 docx2txt
 pypdf
