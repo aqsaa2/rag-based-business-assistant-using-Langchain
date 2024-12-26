@@ -32,7 +32,7 @@ distro==1.9.0
 python-dotenv
 docx2txt==0.8
 executing==2.1.0
-fastapi==0.115.0
+fastapi==0.85.1
 filelock==3.16.1
 flatbuffers==24.3.25
 frozenlist==1.4.1
