@@ -12,7 +12,7 @@ from test import (
     stream_llm_response,
     stream_llm_rag_response,
     store_user_responses_to_db,
-    display_all_chroma_data,
+    # display_all_chroma_data,
     # generate_outputs,
     # display_stored_data,
 )
@@ -103,8 +103,8 @@ with st.sidebar:
 
     # Add this to your Streamlit interface, e.g., after a button click or on app load
     #button to show stored data
-    if st.button("Show Stored Data"):
-        display_all_chroma_data()
+    # if st.button("Show Stored Data"):
+    #     display_all_chroma_data()
 
     st.divider()
     chroma_db_path = os.path.join(os.getcwd(), "chroma_db")
