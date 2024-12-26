@@ -211,7 +211,7 @@ else:
 
             # Check if enough user input has been gathered to generate persona
             # Track the number of responses
-            if st.session_state.user_input_count >= 4 and "asked_for_csv" not in st.session_state:
+            if st.session_state.user_input_count >= 5 and "asked_for_csv" not in st.session_state:
                 st.session_state["asked_for_csv"] = True
                 st.session_state.messages.append({
                     "role": "assistant",
