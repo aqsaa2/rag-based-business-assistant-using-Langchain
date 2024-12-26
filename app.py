@@ -16,6 +16,11 @@ from test import (
     # generate_outputs,
     # display_stored_data,
 )
+import pysqlite3
+import sys
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+#then import 
+import chromadb
 from chromadb import PersistentClient
 
 logging.basicConfig(level=logging.INFO)
