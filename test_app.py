@@ -313,27 +313,36 @@ def load_url_to_db():
         url = st.session_state.rag_url
         docs = []
         
+        # Check if URL is already processed
         if url not in st.session_state.get("rag_sources", []):
             if len(st.session_state.get("rag_sources", [])) < DB_DOCS_LIMIT:
                 try:
-                    loader = WebBaseLoader(url)  # Scraping the URL content
-                    docs.extend(loader.load())  # Load the scraped content as documents
-                    st.session_state.setdefault("rag_sources", []).append(url)  # Track the scraped URL
+                    # Load content from the URL
+                    loader = WebBaseLoader(url)
+                    docs.extend(loader.load())
 
-                    if docs:
-                        _split_and_load_docs(docs)  # Process and store the scraped content in Chroma DB
-                        st.toast(f"Document from URL {url} loaded successfully.", icon="✅")
-                    else:
-                        raise ValueError("No content retrieved from the URL. Please try a different URL.")
-                        
+                    # Check if the loader returned content
+                    if not docs:
+                        raise ValueError("No content was retrieved from the URL. Please provide a different URL.")
+
+                    # Add URL to sources if successful
+                    st.session_state.setdefault("rag_sources", []).append(url)
+
+                    # Process and store documents in Chroma DB
+                    _split_and_load_docs(docs)
+                    st.toast(f"Document from URL {url} loaded successfully.", icon="✅")
+
                 except ValueError as ve:
-                    st.error(f"URL Error: {ve}. Please input a different URL.")
+                    # Handle empty content from URL
+                    st.warning(f"URL Error: {ve}")
                 except Exception as e:
-                    st.error(f"Error loading document from {url}: {str(e)}. Please try another URL.")
+                    # General exception handling
+                    st.error(f"Error loading document from {url}: {str(e)}. Please try a different URL.")
             else:
                 st.error(f"Maximum number of documents reached ({DB_DOCS_LIMIT}).")
         else:
-            st.warning("This URL has already been loaded.")
+            st.warning("This URL has already been processed.")
+
 
 
 
