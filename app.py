@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import dotenv
+import pandas as pd
 import uuid
 import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -12,14 +13,15 @@ from test import (
     stream_llm_response,
     stream_llm_rag_response,
     store_user_responses_to_db,
-    # display_all_chroma_data,
-    # generate_outputs,
-    # display_stored_data,
+    display_download_button,
+    generate_personas,
+    generate_user_stories,
+    generate_gherkin_scenarios,
+    
 )
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
-#then import 
 import chromadb
 from chromadb import PersistentClient
 
@@ -30,37 +32,8 @@ logger = logging.getLogger(__name__)
 chroma_db_path = "chroma_db"
 chroma_client = PersistentClient(path=chroma_db_path)
 
-# # Reset database (delete existing collections)
-# try:
-#     chroma_client.delete_collection(name="user_responses")
-#     logger.info("Chroma database reset successfully.")
-# except Exception as e:
-#     logger.warning(f"Failed to reset Chroma database: {e}")
-
-# Load environment variables
 dotenv.load_dotenv()
 
-# # Initialize Chroma DB client
-# collection = chroma_client.get_or_create_collection(name="user_responses")
-
-# def display_stored_data():
-#     try:
-#         # Fetch all data from the Chroma collection
-#         results = collection.get()
-#         if results:
-#             st.subheader("Stored Data in Database:")
-#             for idx, doc in enumerate(results["documents"]):
-#                 metadata = results["metadatas"][idx]
-#                 st.write(f"**Document {idx + 1}:** {doc}")
-#                 st.write(f"**Metadata:** {metadata}")
-#                 st.divider()
-#         else:
-#             st.write("No data stored in the database yet.")
-#     except Exception as e:
-#         logger.error(f"Failed to fetch data: {e}")
-#         st.error(f"Error fetching data: {str(e)}")
-
-# Page configuration
 st.set_page_config(
     page_title="RAG-Enhanced Chat",
     page_icon="📚",
@@ -117,7 +90,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         is_vector_db_loaded = (
-            ("vec_db" in st.session_state and st.session_state.vector_db is not None) or
+            ("vector_db" in st.session_state and st.session_state.vector_db is not None) or
             ("chroma_db" in st.session_state and st.session_state.chroma_db is not None)
         )
 
@@ -170,7 +143,6 @@ if "user_input_count" not in st.session_state:
 if "ask_for_csv" not in st.session_state:
     st.session_state.ask_for_csv = False
 
-# Main chat interface
 if not google_api_key and "GOOGLE_API_KEY" not in os.environ:
     st.warning("⚠️ Please configure your API key in the sidebar to continue")
 else:
@@ -187,10 +159,9 @@ else:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        # Chat input for answering the business questions
+        # Chat input for answering business questions
         if prompt := st.chat_input("Type your response here..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
-            store_user_responses_to_db(prompt, st.session_state.session_id)  # Save user response to Chroma DB
             st.session_state.user_input_count += 1
 
             with st.chat_message("user"):
@@ -204,45 +175,71 @@ else:
                     for m in st.session_state.messages
                 ]
 
-                if not st.session_state.use_rag:
+                # If RAG is disabled or vector DB is not initialized, use simple LLM response
+                if not st.session_state.use_rag or "vector_db" not in st.session_state:
                     st.write_stream(stream_llm_response(llm_stream, messages))
                 else:
+                    # Use RAG for responses when enabled and vector DB is available
+                    store_user_responses_to_db(prompt, st.session_state.session_id)  # Save user response to Chroma DB
                     st.write_stream(stream_llm_rag_response(llm_stream, messages))
 
-            # Check if enough user input has been gathered to generate persona
-            # Track the number of responses
+            # Check if enough user input has been gathered to generate personas
             if st.session_state.user_input_count >= 5 and "asked_for_csv" not in st.session_state:
                 st.session_state["asked_for_csv"] = True
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": "I have gathered enough information. Would you like me to generate a CSV file with personas, user stories, and business scenarios in gherkin format? (Type 'yes' to confirm)"
+                    "content": "I have gathered enough information. Would you like me to generate a CSV file with personas, user stories, and business scenarios in Gherkin format? (Type 'yes' to confirm)"
                 })
                 st.rerun()
 
-        # Handle persona generation confirmation
         if "asked_for_csv" in st.session_state and st.session_state["asked_for_csv"]:
             last_message = st.session_state.messages[-1]["content"]
+
             if last_message.strip().lower() == "yes":
-                # Call the function to generate the CSV
                 stored_data = get_stored_data()
+
                 if stored_data:
-                    # Generate the CSV using the `generate_csv_from_chroma` function
-                    csv_data = generate_csv_from_chroma(llm_stream, stored_data)
+                    # Generate Personas, User Stories, and Gherkin Scenarios
+                    personas = generate_personas(stored_data)
+                    data_for_csv = []
+
+                    for persona in personas:
+                        # For each persona, generate user stories
+                        user_stories = generate_user_stories(persona, stored_data)
+
+                        for user_story in user_stories:
+                            # For each user story, generate business scenarios in Gherkin format
+                            gherkin_scenarios = generate_gherkin_scenarios(user_story, stored_data)
+
+                            # Store the persona, user story, and gherkin scenarios in a structured format
+                            for scenario in gherkin_scenarios:
+                                data_for_csv.append({
+                                    "Persona": persona,
+                                    "User Story": user_story,
+                                    "Business Scenario (Gherkin)": scenario
+                                })
+                    
+                    # Convert the data to CSV
+                    df = pd.DataFrame(data_for_csv)
+
+                    # Provide the CSV file for download
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": "Here is the CSV file you requested. Click below to download."
                     })
-                    # Provide a download button for the user
-                    display_download_button(llm_stream, stored_data)
-                    st.session_state["asked_for_csv"] = False  # Reset the flag
+                    display_download_button(df)
+
+                    # Reset the flag
+                    st.session_state["asked_for_csv"] = False  
+                    st.rerun()
+
                 else:
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": "No data available to generate the CSV."
                     })
-                st.rerun()
+                    st.rerun()
 
     except Exception as e:
         logger.error(f"Error in main chat interface: {e}")
         st.error(f"An error occurred: {str(e)}")
-
