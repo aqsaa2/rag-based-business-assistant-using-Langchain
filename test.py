@@ -9,6 +9,8 @@ import csv
 import io
 import pandas as pd
 from io import StringIO
+import io
+import csv
 
 from langchain_community.document_loaders.text import TextLoader
 from langchain_community.document_loaders import (
@@ -17,8 +19,6 @@ from langchain_community.document_loaders import (
     Docx2txtLoader,
 )
 
-# pip install docx2txt, pypdf
-# from langchain_community.vectorstores import Chroma
 from langchain_community.vectorstores.chroma import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -28,8 +28,6 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
-#then import 
-import chromadb
 from chromadb import PersistentClient
 
 logging.basicConfig(level=logging.INFO)
@@ -43,88 +41,7 @@ os.environ["USER_AGENT"] = "myagent"
 DB_DOCS_LIMIT = 40
 
 
-# Create a collection
-# collection_name = chroma_client.create_collection(
-#     name="chat_pdf_agent", 
-#     metadata={"hnsw:space": "cosine"}
-# )
-
-# collection = chroma_client.get_collection("chat_pdf_agent")
-
-
-# def display_stored_data():
-#     try:
-#         # Retrieve all data from the Chroma collection
-#         results = collection.get()
-        
-#         if results:
-#             # Display documents and their metadata
-#             st.subheader("Stored Data in Vector Store:")
-#             for idx, doc in enumerate(results["documents"]):
-#                 metadata = results["metadatas"][idx]
-#                 st.write(f"**Document {idx + 1}:** {doc}")
-#                 st.write(f"**Metadata:** {metadata}")
-#                 st.divider()
-#         else:
-#             st.write("No data stored in the vector store yet.")
-#     except Exception as e:
-#         logger.error(f"Failed to fetch data: {e}")
-#         st.error(f"Error fetching data: {str(e)}")
-
-# def generate_csv(personas, user_stories, gherkin_scenarios):
-#     # Combine data into a single dataframe
-#     data = {
-#         "Category": ["Persona"] * len(personas) + ["User Story"] * len(user_stories) + ["Gherkin Scenario"] * len(gherkin_scenarios),
-#         "Content": personas + user_stories + gherkin_scenarios
-#     }
-#     df = pd.DataFrame(data)
-
-#     # Create a CSV in memory
-#     csv_buffer = StringIO()
-#     df.to_csv(csv_buffer, index=False)
-#     csv_buffer.seek(0)
-#     return csv_buffer.getvalue()
-
-# def download_csv_button(personas, user_stories, gherkin_scenarios):
-#     # Generate the CSV file content
-#     csv_content = generate_csv(personas, user_stories, gherkin_scenarios)
-
-#     # Create a download button
-#     st.download_button(
-#         label="Download Outputs as CSV",
-#         data=csv_content,
-#         file_name="outputs.csv",
-#         mime="text/csv"
-#     )
-
-# def csv_output(llm, stored_data):
-#     personas = llm(generate_persona_prompt(stored_data))
-#     user_stories = llm(generate_user_story_prompt(stored_data))
-#     gherkin_scenarios = llm(generate_gherkin_scenario_prompt(stored_data))
-
-#     download_csv_button(personas, user_stories, gherkin_scenarios)
-
-import io
-import csv
-
-
-# def get_stored_data():
-#     if st.session_state.vector_db:
-#         # Fetch all documents and metadata from the collection
-#         results = st.session_state.vector_db.get()
-            
-#         return documents['documents']  # Return stored data as a list of documents
-
-
 def get_stored_data():
-    """
-    Retrieves all documents and metadata stored in the vector_db and returns them.
-
-    Returns:
-        list: A list of dictionaries containing documents and their metadata.
-              Each dictionary has the keys 'document' and 'metadata'.
-              Returns an empty list if vector_db is not initialized or has no data.
-    """
     try:
         if "vector_db" in st.session_state and st.session_state.vector_db:
             # Fetch stored data from vector_db
@@ -148,100 +65,21 @@ def get_stored_data():
         return []
 
 
-def generate_csv_from_chroma(llm, documents):
-    personas = llm(generate_persona_prompt(documents))
-    user_stories = llm(generate_user_story_prompt(documents))
-    gherkin_scenarios = llm(generate_gherkin_scenario_prompt(documents))
-
-    # Create a CSV in memory
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["Type", "Name/Story/Scenario", "Description"])
-    writer.writeheader()
-
-    # Add personas
-    for persona in personas:
-        writer.writerow({
-            "Type": "Persona",
-            "Name/Story/Scenario": persona.get("Persona", "Unknown Persona"),
-            "Description": persona.get("Description", "")
-        })
-
-    # Add user stories
-    for user_story in user_stories:
-        writer.writerow({
-            "Type": "User Story",
-            "Name/Story/Scenario": user_story.get("User Story", "Unknown User Story"),
-            "Description": ""
-        })
-
-    # Add Gherkin scenarios
-    for scenario in gherkin_scenarios:
-        writer.writerow({
-            "Type": "Business Scenario",
-            "Name/Story/Scenario": scenario.get("Scenario", "Unknown Scenario"),
-            "Description": scenario.get("Description", "")
-        })
-
-    output.seek(0)
-    return output.getvalue()
 
 
+def display_download_button(df):
+    # Convert dataframe to CSV string
+    csv = df.to_csv(index=False)
 
-def display_download_button(llm, stored_data):
-    if stored_data:
-        csv_data = generate_csv_from_chroma(llm, stored_data)
-        st.download_button(
-            label="Download CSV",
-            data=csv_data,
-            file_name="personas_user_stories_business_scenarios.csv",
-            mime="text/csv"
-        )
-    else:
-        st.warning("No stored data available for generating the CSV.")
-
+    # Provide the CSV file for download
+    st.download_button(
+        label="Download CSV",
+        data=csv,
+        file_name="personas_user_stories_scenarios.csv",
+        mime="text/csv",
+    )
 
 
-def generate_persona_prompt(stored_data):
-    return f"""
-    Based on the following stored information:
-    {stored_data}
-    
-    Generate a detailed persona including:
-    - Name
-    - Role/Job Title
-    - Background
-    - Goals
-    - Pain Points
-    """
-
-def generate_user_story_prompt(stored_data):
-    return f"""
-    Based on the following stored information:
-    {stored_data}
-    
-    Generate user stories in the format:
-    "As a [user type], I want [goal] so that [reason]."
-    """
-
-def generate_gherkin_scenario_prompt(stored_data):
-    return f"""
-    Based on the following stored information:
-    {stored_data}
-    
-    Generate Gherkin scenarios in the format:
-    ```
-    Feature: [Feature Name]
-      Scenario: [Scenario Name]
-        Given [initial context]
-        When [event occurs]
-        Then [expected outcome]
-    ```
-    """
-# def generate_outputs(llm, stored_data):
-#     personas = llm(generate_persona_prompt(stored_data))
-#     user_stories = llm(generate_user_story_prompt(stored_data))
-#     gherkin_scenarios = llm(generate_gherkin_scenario_prompt(stored_data))
-#     return personas, user_stories, gherkin_scenarios
 
 # //////////// JUST TO CHECK WHETHER USER RESPONSES ARE BEING STORED OR NOT ////////////
 def get_documents_from_collection():
@@ -323,6 +161,29 @@ def handle_business_analysis_conversation():
         st.session_state.messages.append({"role": "assistant", "content": "Thank you for providing the information!"})
         st.session_state.business_analysis_completed = True
 
+def generate_personas(stored_data):
+    # Based on the stored data, generate personas
+    # This can involve extracting specific traits from the data and creating persona descriptions
+    personas = ["Persona 1", "Persona 2", "Persona 3"]  # Example personas
+    return personas
+
+def generate_user_stories(persona, stored_data):
+    # Based on the persona and stored data, generate relevant user stories
+    # This might involve interpreting the needs, goals, and challenges of the persona
+    user_stories = [
+        f"As a {persona}, I want to achieve X so that I can do Y.",
+        f"As a {persona}, I need to understand Z to improve my workflow."
+    ]
+    return user_stories
+
+def generate_gherkin_scenarios(user_story, stored_data):
+    # Based on the user story, generate business scenarios in Gherkin format
+    gherkin_scenarios = [
+        f"Given I am a user, when I try to achieve the goal mentioned in '{user_story}', then I should see the expected results.",
+        f"Given I have the necessary context, when I attempt to execute the '{user_story}', then the system should handle it as expected."
+    ]
+    return gherkin_scenarios
+
 
 # Function to stream the response of the LLM 
 def stream_llm_response(llm_stream, messages):
@@ -339,16 +200,71 @@ def stream_llm_response(llm_stream, messages):
 
 # Function to store responses in Chroma DB
 def store_user_responses_to_db(user_input, session_id):
+    """
+    Stores user input into the Chroma DB with metadata including session ID and timestamp.
+    """
     try:
-        doc_id = str(uuid.uuid4())
+        doc_id = str(uuid.uuid4())  # Unique identifier for the response
+        timestamp = time()  # Capture current time as metadata
+        
         st.session_state.vector_db.add_texts(
-            texts=[user_input],
-            metadatas=[{"session_id": session_id}],
-            ids=[doc_id]
+            texts=[user_input],  # The user's input
+            metadatas=[{"session_id": session_id, "timestamp": timestamp}],  # Metadata
+            ids=[doc_id]  # Unique ID for the document
         )
         logger.info(f"Response saved to Chroma DB with ID: {doc_id}")
     except Exception as e:
         logger.error(f"Failed to store response: {e}")
+        st.error(f"Error saving response: {str(e)}")
+
+def get_user_responses_from_db(session_id):
+    """
+    Retrieves all user inputs stored in Chroma DB for a given session ID.
+    """
+    try:
+        # Query the Chroma DB for documents with the matching session ID
+        results = st.session_state.vector_db.get(
+            where={"session_id": session_id}  # Filter by session ID
+        )
+        return [
+            {"text": doc, "metadata": meta}
+            for doc, meta in zip(results["documents"], results["metadatas"])
+        ]
+    except Exception as e:
+        logger.error(f"Error retrieving responses from Chroma DB: {e}")
+        return []
+
+
+def reconstruct_chat_history(session_id):
+    """
+    Reconstructs chat history from the Chroma DB for the given session ID.
+    """
+    history = get_user_responses_from_db(session_id)
+    
+    # Sort history by timestamp to ensure correct order
+    history.sort(key=lambda x: x["metadata"]["timestamp"])
+    
+    # Format the retrieved responses into chat messages
+    chat_history = [
+        {"role": "user", "content": item["text"]} for item in history
+    ]
+    
+    return chat_history
+
+    
+def truncate_chat_history(messages, max_tokens=3000):
+    """
+    Truncate chat history to fit within the LLM token limit.
+    """
+    token_count = 0
+    truncated = []
+    for msg in reversed(messages):  # Start from the latest messages
+        msg_tokens = len(msg["content"].split())  # Approximate token count
+        if token_count + msg_tokens > max_tokens:
+            break
+        truncated.insert(0, msg)
+        token_count += msg_tokens
+    return truncated
 
 
 def load_doc_to_db():
@@ -447,10 +363,6 @@ def _split_and_load_docs(docs):
         st.session_state.vector_db = initialize_vector_db(docs)
     else:
         st.session_state.vector_db.add_documents(document_chunks)
-
-
-
-
 
 
 # --- Retrieval Augmented Generation (RAG) Phase ---
