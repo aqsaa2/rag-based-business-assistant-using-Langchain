@@ -7,7 +7,7 @@ import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
 from langchain_community.vectorstores.chroma import Chroma
-from test import (
+from test_app import (
     load_doc_to_db,
     load_url_to_db,
     stream_llm_response,
