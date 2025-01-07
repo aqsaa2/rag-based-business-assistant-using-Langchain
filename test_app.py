@@ -312,21 +312,29 @@ def load_url_to_db():
     if "rag_url" in st.session_state and st.session_state.rag_url:
         url = st.session_state.rag_url
         docs = []
+        
         if url not in st.session_state.get("rag_sources", []):
             if len(st.session_state.get("rag_sources", [])) < DB_DOCS_LIMIT:
                 try:
                     loader = WebBaseLoader(url)  # Scraping the URL content
-                    docs.extend(loader.load())  # Load the scraped content as documents.
-                    st.session_state.setdefault("rag_sources", []).append(url)  # Track the scraped URL.
+                    docs.extend(loader.load())  # Load the scraped content as documents
+                    st.session_state.setdefault("rag_sources", []).append(url)  # Track the scraped URL
 
+                    if docs:
+                        _split_and_load_docs(docs)  # Process and store the scraped content in Chroma DB
+                        st.toast(f"Document from URL {url} loaded successfully.", icon="✅")
+                    else:
+                        raise ValueError("No content retrieved from the URL. Please try a different URL.")
+                        
+                except ValueError as ve:
+                    st.error(f"URL Error: {ve}. Please input a different URL.")
                 except Exception as e:
-                    st.error(f"Error loading document from {url}: {e}")
-
-                if docs:
-                    _split_and_load_docs(docs)  # Process and store the scraped content in Chroma DB.
-                    st.toast(f"Document from URL {url} loaded successfully.", icon="✅")
+                    st.error(f"Error loading document from {url}: {str(e)}. Please try another URL.")
             else:
-                st.error("Maximum number of documents reached (10).")
+                st.error(f"Maximum number of documents reached ({DB_DOCS_LIMIT}).")
+        else:
+            st.warning("This URL has already been loaded.")
+
 
 
 # Update this part in the initialize_vector_db function:
