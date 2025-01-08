@@ -17,7 +17,7 @@ from test_app import (
     generate_personas,
     generate_user_stories,
     generate_gherkin_scenarios,
-    
+    display_all_chroma_data,
 )
 import pysqlite3
 import sys
@@ -135,6 +135,11 @@ with st.sidebar:
                 st.write(f"- {source}")
         else:
             st.write("No sources loaded yet")
+            
+    # To display the stored data in vector db
+    if uploaded_files:
+        if st.button("Show Stored Data"):
+            display_all_chroma_data()
 
 # Initialize session state for tracking context-building
 if "user_input_count" not in st.session_state:
