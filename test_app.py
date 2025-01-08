@@ -217,56 +217,6 @@ def store_user_responses_to_db(user_input, session_id):
         logger.error(f"Failed to store response: {e}")
         st.error(f"Error saving response: {str(e)}")
 
-def get_user_responses_from_db(session_id):
-    """
-    Retrieves all user inputs stored in Chroma DB for a given session ID.
-    """
-    try:
-        # Query the Chroma DB for documents with the matching session ID
-        results = st.session_state.vector_db.get(
-            where={"session_id": session_id}  # Filter by session ID
-        )
-        return [
-            {"text": doc, "metadata": meta}
-            for doc, meta in zip(results["documents"], results["metadatas"])
-        ]
-    except Exception as e:
-        logger.error(f"Error retrieving responses from Chroma DB: {e}")
-        return []
-
-
-def reconstruct_chat_history(session_id):
-    """
-    Reconstructs chat history from the Chroma DB for the given session ID.
-    """
-    history = get_user_responses_from_db(session_id)
-    
-    # Sort history by timestamp to ensure correct order
-    history.sort(key=lambda x: x["metadata"]["timestamp"])
-    
-    # Format the retrieved responses into chat messages
-    chat_history = [
-        {"role": "user", "content": item["text"]} for item in history
-    ]
-    
-    return chat_history
-
-    
-def truncate_chat_history(messages, max_tokens=3000):
-    """
-    Truncate chat history to fit within the LLM token limit.
-    """
-    token_count = 0
-    truncated = []
-    for msg in reversed(messages):  # Start from the latest messages
-        msg_tokens = len(msg["content"].split())  # Approximate token count
-        if token_count + msg_tokens > max_tokens:
-            break
-        truncated.insert(0, msg)
-        token_count += msg_tokens
-    return truncated
-
-
 def load_doc_to_db():
     # Use loader according to doc type
     if "rag_docs" in st.session_state and st.session_state.rag_docs:
@@ -364,9 +314,6 @@ def initialize_vector_db(docs):
         collection_names.pop(0)
 
     return vector_db
-
-
-
 
 def _split_and_load_docs(docs):
     text_splitter = RecursiveCharacterTextSplitter(
