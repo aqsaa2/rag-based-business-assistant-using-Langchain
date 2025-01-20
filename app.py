@@ -18,7 +18,10 @@ from test_app import (
     generate_user_stories,
     generate_gherkin_scenarios,
     display_all_chroma_data,
+    get_user_responses_from_db,
+    get_stored_data,
 )
+
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
