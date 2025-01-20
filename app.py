@@ -141,7 +141,7 @@ with st.sidebar:
         if st.button("Show Stored Data"):
             display_all_chroma_data()
 
-# Initialize session state for tracking context-building
+# for tracking context-building
 if "user_input_count" not in st.session_state:
     st.session_state.user_input_count = 0
 
@@ -224,17 +224,17 @@ else:
                                     "Business Scenario (Gherkin)": scenario
                                 })
                     
-                    # Convert the data to CSV
+                    
                     df = pd.DataFrame(data_for_csv)
 
-                    # Provide the CSV file for download
+                    # CSV file for download
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": "Here is the CSV file you requested. Click below to download."
                     })
                     display_download_button(df)
 
-                    # Reset the flag
+                   
                     st.session_state["asked_for_csv"] = False  
                     st.rerun()
 
