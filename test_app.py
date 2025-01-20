@@ -161,28 +161,87 @@ def handle_business_analysis_conversation():
         st.session_state.messages.append({"role": "assistant", "content": "Thank you for providing the information!"})
         st.session_state.business_analysis_completed = True
 
-def generate_personas(stored_data):
-    # Based on the stored data, generate personas
-    # This can involve extracting specific traits from the data and creating persona descriptions
-    personas = ["Persona 1", "Persona 2", "Persona 3"]  # Example personas
+def generate_personas(stored_data, user_responses):
+  """Generates personas based on stored data and user responses."""
+  try:
+    if not stored_data and not user_responses:
+      return ["No data available to generate personas."]
+
+    # Combine all text data for persona generation
+    all_text = " ".join(stored_data + user_responses)
+
+    prompt = f"""Create distinct user personas based on the following information:
+      {all_text}
+
+      Each persona should include:
+      - A name
+      - A brief description of their background and goals
+      - Their needs and pain points related to the information provided.
+      """
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"])
+    persona_response = llm([HumanMessage(content=prompt)]).content
+
+    # Get only the text content, removing potential LLM debugging info
+    personas = persona_response.strip().split("\n\n")
+    print(f"Generated Personas: {personas}")
+
     return personas
 
-def generate_user_stories(persona, stored_data):
-    # Based on the persona and stored data, generate relevant user stories
-    # This might involve interpreting the needs, goals, and challenges of the persona
-    user_stories = [
-        f"As a {persona}, I want to achieve X so that I can do Y.",
-        f"As a {persona}, I need to understand Z to improve my workflow."
-    ]
-    return user_stories
+  except Exception as e:
+    logger.error(f"Error generating personas: {e}")
+    return ["Error generating personas."]
 
-def generate_gherkin_scenarios(user_story, stored_data):
-    # Based on the user story, generate business scenarios in Gherkin format
-    gherkin_scenarios = [
-        f"Given I am a user, when I try to achieve the goal mentioned in '{user_story}', then I should see the expected results.",
-        f"Given I have the necessary context, when I attempt to execute the '{user_story}', then the system should handle it as expected."
-    ]
+def generate_user_stories(persona, stored_data, user_responses):
+  """Generates user stories based on a persona, stored data, and user responses."""
+  try:
+    if not stored_data and not user_responses:
+      return ["No data available to generate personas."]
+
+    all_text = " ".join(stored_data + user_responses)
+
+    prompt = f"""Given the persona:
+      {persona}
+
+      And the following information:
+      {all_text}
+
+      Generate 2 user stories in the format: "As a [user type], I want [goal] so that [benefit]".
+      """
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"])
+    user_story_response = llm([HumanMessage(content=prompt)]).content
+
+    # Get only the text content, removing potential LLM debugging info
+    user_stories = user_story_response.strip().split("\n")
+    return user_stories
+  except Exception as e:
+    logger.error(f"Error generating user stories: {e}")
+    return ["Error generating user stories"]
+
+def generate_gherkin_scenarios(user_story, stored_data, user_responses):
+  """Generates Gherkin scenarios based on a user story, stored data, and user responses."""
+  try:
+    if not stored_data and not user_responses:
+      return ["No data available to generate Gherkin scenarios."]
+
+    all_text = " ".join(stored_data + user_responses)
+
+    prompt = f"""Given the user story:
+      {user_story}
+
+      And the following information:
+      {all_text}
+
+      Generate 2 Gherkin scenarios (Given/When/Then format) that test this user story.
+      """
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"])
+    gherkin_response = llm([HumanMessage(content=prompt)]).content
+
+    # Get only the text content, removing potential LLM debugging info
+    gherkin_scenarios = gherkin_response.strip().split("\n")
     return gherkin_scenarios
+  except Exception as e:
+    logger.error(f"Error generating Gherkin scenarios: {e}")
+    return ["Error generating Gherkin scenarios"]
 
 
 # Function to stream the response of the LLM 
