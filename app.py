@@ -202,19 +202,20 @@ else:
 
             if last_message.strip().lower() == "yes":
                 stored_data = get_stored_data()
+                user_responses = get_user_responses_from_db(st.session_state.session_id)
 
                 if stored_data:
                     # Generate Personas, User Stories, and Gherkin Scenarios
-                    personas = generate_personas(stored_data)
+                    personas = generate_personas(stored_data, user_responses)
                     data_for_csv = []
 
                     for persona in personas:
                         # For each persona, generate user stories
-                        user_stories = generate_user_stories(persona, stored_data)
+                        user_stories = generate_user_stories(persona, stored_data, user_responses)
 
                         for user_story in user_stories:
                             # For each user story, generate business scenarios in Gherkin format
-                            gherkin_scenarios = generate_gherkin_scenarios(user_story, stored_data)
+                            gherkin_scenarios = generate_gherkin_scenarios(user_story, stored_data, user_responses)
 
                             # Store the persona, user story, and gherkin scenarios in a structured format
                             for scenario in gherkin_scenarios:
