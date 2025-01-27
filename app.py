@@ -18,11 +18,14 @@ from test_app import (
     generate_user_stories,
     generate_gherkin_scenarios,
     display_all_chroma_data,
+    get_user_responses_from_db,
     get_stored_data,
+    
 )
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+
 import chromadb
 from chromadb import PersistentClient
 
@@ -74,11 +77,6 @@ with st.sidebar:
                 st.warning("Please enter your Google API Key to continue")
     else:
         google_api_key = os.environ["GOOGLE_API_KEY"]
-
-    # Add this to your Streamlit interface, e.g., after a button click or on app load
-    #button to show stored data
-    # if st.button("Show Stored Data"):
-    #     display_all_chroma_data()
 
     st.divider()
     chroma_db_path = os.path.join(os.getcwd(), "chroma_db")
@@ -136,13 +134,13 @@ with st.sidebar:
                 st.write(f"- {source}")
         else:
             st.write("No sources loaded yet")
-            
-    # To display the stored data in vector db
+
     if uploaded_files:
         if st.button("Show Stored Data"):
             display_all_chroma_data()
 
-# for tracking context-building
+
+# Initialize session state for tracking context-building
 if "user_input_count" not in st.session_state:
     st.session_state.user_input_count = 0
 
@@ -194,7 +192,7 @@ else:
                 st.session_state["asked_for_csv"] = True
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": "I have gathered enough information. Would you like me to generate a CSV file with personas, user stories, and business scenarios in Gherkin format? (Type 'yes' to confirm)"
+                    "content": "I have gathered enough information. Would you like me to generate a CSV with personas, user stories, and business scenarios in Gherkin format? (Type 'yes' to confirm)"
                 })
                 st.rerun()
 
@@ -203,9 +201,9 @@ else:
 
             if last_message.strip().lower() == "yes":
                 stored_data = get_stored_data()
-                user_responses = get_user_responses_from_db(st.session_state.session_id)
+                user_responses = get_user_responses_from_db()
 
-                if stored_data:
+                if stored_data or user_responses:
                     # Generate Personas, User Stories, and Gherkin Scenarios
                     personas = generate_personas(stored_data, user_responses)
                     data_for_csv = []
@@ -226,17 +224,17 @@ else:
                                     "Business Scenario (Gherkin)": scenario
                                 })
                     
-                    
+                    # Convert the data to CSV
                     df = pd.DataFrame(data_for_csv)
 
-                    # CSV file for download
+                    # Provide the CSV file for download
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": "Here is the CSV file you requested. Click below to download."
                     })
                     display_download_button(df)
 
-                   
+                    # Reset the flag
                     st.session_state["asked_for_csv"] = False  
                     st.rerun()
 
