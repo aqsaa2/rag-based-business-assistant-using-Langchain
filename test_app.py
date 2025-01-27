@@ -1,34 +1,23 @@
 import os
 import dotenv
-import time
-import requests
-from tenacity import retry, wait_exponential, stop_after_attempt, after_log, retry_if_exception_type
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type, wait_fixed
+from time import time
 import streamlit as st
 import uuid
 import logging
+import streamlit as st
 import csv
+import io
 import pandas as pd
 from io import StringIO
-from backoff import expo
-import json
-import re
-from openai import OpenAI
-from google.api_core.exceptions import ResourceExhausted
+import io
+import csv
+
 from langchain_community.document_loaders.text import TextLoader
 from langchain_community.document_loaders import (
-    WebBaseLoader,
-    PyPDFLoader,
+    WebBaseLoader, 
+    PyPDFLoader, 
     Docx2txtLoader,
 )
-import re
-# import json
-# import time
-# from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader, WebBaseLoader
-# from langchain.text_splitter import RecursiveCharacterTextSplitter
-# from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-# from langchain.chains import create_history_aware_retriever, create_stuff_documents_chain, create_retrieval_chain
-# from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from langchain_community.vectorstores.chroma import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -36,13 +25,10 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import HumanMessage, AIMessage
-from chromadb import PersistentClient
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+from chromadb import PersistentClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,162 +40,20 @@ collection = chroma_client.get_or_create_collection(name="my_collection")
 os.environ["USER_AGENT"] = "myagent"
 DB_DOCS_LIMIT = 40
 
-XAI_API_KEY = os.getenv("XAI_API_KEY")
-client = OpenAI(
-    api_key=XAI_API_KEY,
-    base_url="https://api.x.ai/v1",
-)
-google_api_key = os.environ["GOOGLE_API_KEY"]
-LLM_CALL_DELAY = int(os.environ.get("LLM_CALL_DELAY", 1))
-INITIAL_LLM_CALL_DELAY = int(os.environ.get("INITIAL_LLM_CALL_DELAY", 1))
-MAX_LLM_CALL_DELAY = int(os.environ.get("MAX_LLM_CALL_DELAY", 60))  # Maximum delay of 60 seconds
-BASE_DELAY = 2  # Initial delay in seconds
-MAX_DELAY = 10  # Maximum delay in seconds
-RETRY_ATTEMPTS = 3 #Number of retry attempts
-RATE_LIMIT_DELAY = 1
-last_call_time = 0
-
-# def get_llm_response(prompt, retries=5):
-#     """Gets a response from the LLM with retry logic and adaptive delay."""
-#     delay = INITIAL_LLM_CALL_DELAY
-#     for attempt in range(retries):
-#         try:
-#             llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"])
-#             response = llm([HumanMessage(content=prompt)]).content
-#             return response
-#         except (ConnectionError, TimeoutError) as e:
-#             logger.error(f"Network error during LLM call: {e}. Retrying in {delay} seconds...")
-#         except Exception as e:
-#             if "ResourceExhausted" in str(e):
-#                 logger.warning(f"Quota error (429) on attempt {attempt + 1}. Retrying in {delay} seconds...")
-#             else:
-#                 logger.exception(f"Other error during LLM call: {e}. Retrying in {delay} seconds...")
-
-#         sleep(delay)
-#         delay = min(delay * 2, MAX_LLM_CALL_DELAY)
-
-#     logger.error(f"LLM call failed after {retries} retries.")
-#     return None
-
-# @retry(
-#     wait=wait_exponential(multiplier=1, min=2, max=10),  # Exponential backoff
-#     stop=stop_after_attempt(3),  # Stop after 3 attempts
-#     after=after_log(logger, logging.INFO),  # Log retry attempts
-#     retry=retry_if_exception_type((ConnectionError, TimeoutError)),  # Retry on these errors
-#     reraise=True  # Re-raise the exception after max retries
-# )
-# def call_llm_service(prompt, llm):
-#     """Calls the LLM service with retry logic and timeouts."""
-#     try:
-#         start_time = time()
-#         response = llm([HumanMessage(content=prompt)]).content
-#         end_time = time()
-#         logger.info(f"LLM call took {end_time - start_time:.2f} seconds.")
-#         return response
-#     except (ConnectionError, TimeoutError) as e:
-#         logger.error(f"Network error during LLM call: {e}")
-#         raise  # Re-raise to trigger retry
-#     except Exception as e:
-#         logger.error(f"Other error during LLM call: {e}")
-#         raise  # Re-raise to trigger retry
-
-# def generate_artifacts(stored_data, user_responses):
-#     """Generates artifacts in plain text format."""
-#     all_text = " ".join([str(item) for item in stored_data + user_responses])
-
-#     try:
-#         # Improved Prompts for Plain Text Output
-#         persona_prompt = f"""
-#         Given the following information:
-#         {all_text}
-
-#         Generate PERSONAS. For each persona, provide a name, a description, and their needs. Format each persona like this:
-
-#         **Name:** [Persona Name]
-#         **Description:** [Persona Description]
-#         **Needs:** [Persona Needs]
-
-#         Separate each persona with a horizontal line (---).
-#         """
-
-#         user_story_prompt_template = """
-#         Given the following information:
-#         {all_text}
-
-#         Persona:
-#         {persona_text}
-
-#         Generate USER STORIES for this persona. Format each user story as:
-
-#         As a [user type], I want [goal], so that [benefit].
-
-#         Separate each user story with a newline.
-#         """
-
-#         gherkin_scenario_prompt_template = """
-#         Given the following information:
-#         {all_text}
-
-#         User Story:
-#         {user_story_text}
-
-#         Generate Gherkin SCENARIOS for this user story. Format each scenario as:
-
-#         Given [precondition]
-#         When [action]
-#         Then [outcome]
-
-#         Separate each scenario with a newline.
-#         """
-
-#         persona_response = get_llm_response(persona_prompt)
-#         if persona_response is None:
-#             return None
-#         sleep(LLM_CALL_DELAY)
-
-#         artifacts = []
-#         personas_text = persona_response.split("---\n")  # Splitting the personas
-#         for persona_text in personas_text:
-#             if not persona_text.strip():  # Skip empty strings
-#                 continue
-
-#             user_story_prompt = user_story_prompt_template.format(all_text=all_text, persona_text=persona_text)
-#             user_story_response = get_llm_response(user_story_prompt)
-#             if user_story_response is None:
-#                 continue
-#             sleep(LLM_CALL_DELAY)
-
-#             user_stories_text = user_story_response.split('\n')
-#             for user_story_text in user_stories_text:
-#                 if not user_story_text.strip():
-#                     continue
-#                 gherkin_scenario_prompt = gherkin_scenario_prompt_template.format(all_text=all_text, user_story_text=user_story_text)
-#                 gherkin_scenario_response = get_llm_response(gherkin_scenario_prompt)
-#                 if gherkin_scenario_response is None:
-#                     continue
-#                 sleep(LLM_CALL_DELAY)
-
-#                 artifacts.append({
-#                     "persona": persona_text.strip(),
-#                     "user_story": user_story_text.strip(),
-#                     "gherkin_scenarios": [s.strip() for s in gherkin_scenario_response.split('\n') if s.strip()],
-#                 })
-#         return artifacts
-
-#     except Exception as e:
-#         logger.error(f"An unexpected error occurred: {e}")
-#         st.error("An unexpected error occurred. Check logs.")
-#         return None
-
 
 def get_stored_data():
     try:
         if "vector_db" in st.session_state and st.session_state.vector_db:
+            # Fetch stored data from vector_db
             results = st.session_state.vector_db.get()
-
+            
             if results:
-                stored_data = results.get("documents", [])
-                return stored_data  # Return only document text
+                # Combine documents with their corresponding metadata
+                stored_data = [
+                    {"document": doc, "metadata": metadata}
+                    for doc, metadata in zip(results.get("documents", []), results.get("metadatas", []))
+                ]
+                return stored_data
             else:
                 logger.info("No data found in the vector_db.")
                 return []
@@ -219,6 +63,21 @@ def get_stored_data():
     except Exception as e:
         logger.error(f"Error retrieving data from vector_db: {e}")
         return []
+
+
+
+
+def display_download_button(df):
+    # Convert dataframe to CSV string
+    csv = df.to_csv(index=False)
+
+    # Provide the CSV file for download
+    st.download_button(
+        label="Download CSV",
+        data=csv,
+        file_name="personas_user_stories_scenarios.csv",
+        mime="text/csv",
+    )
 
 
 
@@ -302,143 +161,79 @@ def handle_business_analysis_conversation():
         st.session_state.messages.append({"role": "assistant", "content": "Thank you for providing the information!"})
         st.session_state.business_analysis_completed = True
 
-@retry(
-    wait=wait_exponential(multiplier=BASE_DELAY, min=BASE_DELAY, max=MAX_DELAY) + wait_fixed(BASE_DELAY),
-    stop=stop_after_attempt(RETRY_ATTEMPTS),
-    retry=retry_if_exception_type(ResourceExhausted),
-    reraise=False,  
-)
-def call_llm(llm, prompt):
-    global last_call_time
-    elapsed_time = time.time() - last_call_time
-
-    if elapsed_time < RATE_LIMIT_DELAY:
-        sleep_time = RATE_LIMIT_DELAY - elapsed_time
-        logger.info(f"Rate limiting: Sleeping for {sleep_time:.2f} seconds.")
-        time.sleep(sleep_time)  
-
-    try:
-        response = llm.invoke(prompt)
-        last_call_time = time.time() 
-        return response
-    except Exception as e:
-        logger.error(f"Error calling LLM: {e}")
-        raise  
-
 def generate_personas(stored_data, user_responses):
+    """Generates personas based on stored data and user responses."""
     try:
-        if not stored_data and not user_responses:
+        all_data = stored_data + [{"document": response, "metadata": {"type": "user_response"}} for response in user_responses]
+        if not all_data:
             return ["No data available to generate personas."]
 
-        if "persona_retry_in_progress" in st.session_state and st.session_state.persona_retry_in_progress:
-            return ["Persona generation is retrying, please wait..."]
+        # Combine all text data for persona generation
+        all_text = " ".join([item["document"] for item in all_data])
 
-        user_response_texts = [response["text"] for response in user_responses]
-        all_text = " ".join(stored_data + user_response_texts)
-
-        prompt = f"""
-        Given the following information:
+        prompt = f"""Create distinct user personas based on the following information:
         {all_text}
 
-        Generate PERSONAS. For each persona, provide a name, a description, and their needs. Format each persona like this:
+        Each persona should include:
+        - A name
+        - A brief description of their background and goals
+        - Their needs and pain points related to the information provided.
+        """
 
-        ---PERSONA_SEPARATOR---
-        **Name:** [Persona Name]
-        **Description:** [Persona Description]
-        **Needs:** [Persona Needs]
-        ---PERSONA_SEPARATOR---
-
-        """ # Example Prompt
-
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
-            temperature=0.7,
-            google_api_key=os.environ["GOOGLE_API_KEY_NEW"],
-            max_retries=1
-        )
-
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"])
         persona_response = llm([HumanMessage(content=prompt)]).content
 
-        if not isinstance(persona_response, str):
-            if isinstance(persona_response, AIMessage):
-                persona_response = persona_response.content
-                logger.warning(f"LLM returned AIMessage. Extracting content: {persona_response}")
-            else:
-                try:
-                    persona_response = json.dumps(persona_response)
-                    logger.warning(f"LLM returned non-string response. Attempting JSON Conversion: {persona_response}")
-                except TypeError as e:
-                    logger.error(f"LLM returned unexpected non-string, non-JSON and non AIMessage response: {type(persona_response)}, {persona_response}, {e}")
-                    persona_response = str(persona_response) # Force to string as a last resort
-                except Exception as e:
-                    logger.error(f"Error converting the response to string: {e}")
-                    return ["LLM returned an unexpected response format. Check Logs."]
+        personas = persona_response.strip().split("\n\n") # Splitting by double newlines
 
-        personas = [p.strip() for p in re.split(r"---PERSONA_SEPARATOR---", persona_response) if p.strip()]
-        print(f"Generated Personas: {personas}")
         return personas
 
-    except ResourceExhausted as e:
-        logger.error(f"Rate limit hit during persona generation: {e}")
-        return generate_personas(stored_data, user_responses)  # Retry
     except Exception as e:
         logger.error(f"Error generating personas: {e}")
-        return ["Error generating personas. Check Logs."]
-
+        return ["Error generating personas."]
 
 def generate_user_stories(persona, stored_data, user_responses):
-  """Generates user stories based on a persona, stored data, and user responses."""
-  try:
-    if stored_data and user_responses:
-      return ["No data available to generate personas."]
+    """Generates user stories based on a persona, stored data, and user responses."""
+    try:
+        all_data = stored_data + [{"document": response, "metadata": {"type": "user_response"}} for response in user_responses]
+        all_text = " ".join([item["document"] for item in all_data])
 
-    user_response_texts = [response["text"] for response in user_responses]
-    all_text = " ".join(stored_data + user_response_texts)
+        prompt = f"""Given the persona:
+        {persona}
 
-    prompt = f"""Given the persona:
-      {persona}
+        And the following information:
+        {all_text}
 
-      And the following information:
-      {all_text}
-
-      Generate 2 user stories in the format: "As a [user type], I want [goal] so that [benefit]".
-      """
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"],max_retries=1)
-    user_story_response = llm([HumanMessage(content=prompt)]).content
-
-    user_stories = user_story_response.strip().split("\n")
-    return user_stories
-  except Exception as e:
-    logger.error(f"Error generating user stories: {e}")
-    return ["Error generating user stories"]
+        Generate 2 user stories in the format: "As a [user type], I want [goal] so that [benefit]".
+        """
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"])
+        user_story_response = llm([HumanMessage(content=prompt)]).content
+        user_stories = user_story_response.strip().split("\n")
+        return user_stories
+    except Exception as e:
+        logger.error(f"Error generating user stories: {e}")
+        return ["Error generating user stories"]
 
 def generate_gherkin_scenarios(user_story, stored_data, user_responses):
-  """Generates Gherkin scenarios based on a user story, stored data, and user responses."""
-  try:
-    if not stored_data and not user_responses:
-      return ["No data available to generate Gherkin scenarios."]
+    """Generates Gherkin scenarios based on a user story, stored data, and user responses."""
+    try:
+        all_data = stored_data + [{"document": response, "metadata": {"type": "user_response"}} for response in user_responses]
+        all_text = " ".join([item["document"] for item in all_data])
 
-    user_response_texts = [response["text"] for response in user_responses]
-    all_text = " ".join(stored_data + user_response_texts)
+        prompt = f"""Given the user story:
+        {user_story}
 
-    prompt = f"""Given the user story:
-      {user_story}
+        And the following information:
+        {all_text}
 
-      And the following information:
-      {all_text}
-
-      Generate 2 Gherkin scenarios (Given/When/Then format) that test this user story.
-      """
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"],max_retries=1)
-    gherkin_response = llm([HumanMessage(content=prompt)]).content
-
-    # only the text content, removing potential LLM debugging info
-    gherkin_scenarios = gherkin_response.strip().split("\n")
-    return gherkin_scenarios
-  except Exception as e:
-    logger.error(f"Error generating Gherkin scenarios: {e}")
-    return ["Error generating Gherkin scenarios"]
-
+        Generate 2 Gherkin scenarios (Given/When/Then format) that test this user story.
+        """
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7, google_api_key=os.environ["GOOGLE_API_KEY"])
+        gherkin_response = llm([HumanMessage(content=prompt)]).content
+        gherkin_scenarios = gherkin_response.strip().split("\n")
+        return gherkin_scenarios
+    except Exception as e:
+        logger.error(f"Error generating Gherkin scenarios: {e}")
+        return ["Error generating Gherkin scenarios"]
 
 
 # Function to stream the response of the LLM 
@@ -461,7 +256,7 @@ def store_user_responses_to_db(user_input, session_id):
     """
     try:
         doc_id = str(uuid.uuid4())  # Unique identifier for the response
-        timestamp = time.time()  # Capture current time as metadata
+        timestamp = time()  # Capture current time as metadata
         
         st.session_state.vector_db.add_texts(
             texts=[user_input],  # The user's input
@@ -474,15 +269,53 @@ def store_user_responses_to_db(user_input, session_id):
         st.error(f"Error saving response: {str(e)}")
 
 def get_user_responses_from_db(session_id):
+    """
+    Retrieves all user inputs stored in Chroma DB for a given session ID.
+    """
     try:
-        results = st.session_state.vector_db.get(where={"session_id": session_id})
+        # Query the Chroma DB for documents with the matching session ID
+        results = st.session_state.vector_db.get(
+            where={"session_id": session_id}  # Filter by session ID
+        )
         return [
             {"text": doc, "metadata": meta}
-            for doc, meta in zip(results.get("documents", []), results.get("metadatas", []))
+            for doc, meta in zip(results["documents"], results["metadatas"])
         ]
     except Exception as e:
         logger.error(f"Error retrieving responses from Chroma DB: {e}")
         return []
+
+
+def reconstruct_chat_history(session_id):
+    """
+    Reconstructs chat history from the Chroma DB for the given session ID.
+    """
+    history = get_user_responses_from_db(session_id)
+    
+    # Sort history by timestamp to ensure correct order
+    history.sort(key=lambda x: x["metadata"]["timestamp"])
+    
+    # Format the retrieved responses into chat messages
+    chat_history = [
+        {"role": "user", "content": item["text"]} for item in history
+    ]
+    
+    return chat_history
+
+    
+def truncate_chat_history(messages, max_tokens=3000):
+    """
+    Truncate chat history to fit within the LLM token limit.
+    """
+    token_count = 0
+    truncated = []
+    for msg in reversed(messages):  # Start from the latest messages
+        msg_tokens = len(msg["content"].split())  # Approximate token count
+        if token_count + msg_tokens > max_tokens:
+            break
+        truncated.insert(0, msg)
+        token_count += msg_tokens
+    return truncated
 
 
 def load_doc_to_db():
@@ -593,40 +426,7 @@ def initialize_vector_db(docs):
         collection_names.pop(0)
 
     return vector_db
-def initialize_vector_db(docs):
-    """
-    Initializes the vector database with the provided documents.
 
-    Args:
-        docs: List of documents to be added to the vector database.
-
-    Returns:
-        Vector database instance.
-    """
-    # Ensure session_id is initialized
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = str(uuid.uuid4())
-
-    # Create a unique collection name using the current time and session ID
-    collection_name = f"{str(time.time()).replace('.', '')[:14]}_{st.session_state.session_id}"
-
-    # Initialize the vector database
-    embedding = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    vector_db = Chroma.from_documents(
-        documents=docs,
-        embedding=embedding,
-        collection_name=collection_name,
-        client=chroma_client,
-    )
-
-    # Manage the number of collections in memory (keep the last 20)
-    collection_names = sorted([collection.name for collection in chroma_client.list_collections()])
-    print("Number of collections:", len(collection_names))
-    while len(collection_names) > 20:
-        chroma_client.delete_collection(collection_names[0])
-        collection_names.pop(0)
-
-    return vector_db
 
 
 
