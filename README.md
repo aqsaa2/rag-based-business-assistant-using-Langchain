@@ -18,7 +18,7 @@ Experience the application live at: [https://rag-based-business-assistant-using-
 
 **Requirements:**
 
-*   Python 3.6+
+*   Python 3.10
 *   Streamlit
 *   langchain
 *   langchain-google-genai (requires Google Cloud Platform project and API key)
